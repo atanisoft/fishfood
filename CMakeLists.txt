@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.13)
 
+if(NOT PICO_SDK_PATH)
+  set(PICO_SDK_PATH "/opt/pico-sdk")
+endif()
+
+option(USE_SENSORLESS_Z "Use sensorless Z homing?"
+       OFF)
+
+option(USE_PHOTON_FEEDERS "Use Photon feeder protocol?"
+       OFF)
+
 include(pico_sdk_import.cmake)
 
 project(fishfood_project C CXX ASM)
@@ -46,6 +56,7 @@ list(APPEND FISHFOOD_SOURCES
   src/motion/linear_axis.c
   src/motion/rotational_axis.c
   src/motion/stepper.c
+  src/photon/photon.c
   src/report.c
 )
 

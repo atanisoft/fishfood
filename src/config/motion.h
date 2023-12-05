@@ -109,7 +109,9 @@ https://opensource.org/licenses/MIT. */
 #define Z_HOMING_DISTANCE_MM 100.0f
 #define Z_HOMING_BOUNCE_MM 5.0f
 #define Z_HOMING_DIR -1
+#if !USE_SENSORLESS_Z
 #define Z_HOME_ENDSTOP PIN_IN_2
+#endif
 #endif
 
 /*

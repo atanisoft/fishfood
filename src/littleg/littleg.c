@@ -12,6 +12,7 @@ enum ParseState {
     PARSING_EOL,
     PARSING_FIELD_NAME,
     PARSING_FIELD_VALUE,
+    PARSING_QUOTED_VALUE,
     PARSING_COMMENT,
 };
 
@@ -23,6 +24,7 @@ struct Parser {
     struct lilg_Decimal value;
     bool sign;
     bool has_decimal;
+    size_t quoted_str_len;
 };
 
 static struct Parser parser = {};
@@ -96,6 +98,21 @@ enum lilg_ParseResult lilg_parse(struct lilg_Command* command, char c) {
         return parser.valid ? LILG_VALID : LILG_INVALID;
     }
 
+    // Quoted string
+    if (c == '"')
+    {
+        if (parser.state == PARSING_QUOTED_VALUE ||
+            parser.quoted_str_len >= LILG_MAX_QUOTED_STRING_LENGTH)
+        {
+            parser.state = PARSING_FIELD_NAME;
+        }
+        else
+        {
+            parser.state = PARSING_QUOTED_VALUE;
+        }
+        return LILG_INCOMPLETE;
+    }
+
     switch (parser.state) {
         case PARSING_FIELD_NAME: {
             if (c == ' ') {
@@ -129,6 +146,19 @@ enum lilg_ParseResult lilg_parse(struct lilg_Command* command, char c) {
                 parser.has_decimal = true;
             } else if (c == ' ') {
                 parse_end_field();
+            } else {
+                // Anything else is an error
+                parse_reset();
+                parser.state = PARSING_COMMENT;
+            }
+            break;
+        }
+
+        case PARSING_QUOTED_VALUE: {
+            if (parser.quoted_str_len < LILG_MAX_QUOTED_STRING_LENGTH)
+            {
+                parser.command.quoted_string[parser.quoted_str_len++] = c;
+                parser.command.quoted_string[parser.quoted_str_len] = '\0';
             } else {
                 // Anything else is an error
                 parse_reset();

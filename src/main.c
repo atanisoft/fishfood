@@ -33,7 +33,7 @@ static uint8_t pixels[3 * NUM_PIXELS];
 
 static struct Machine machine;
 static struct I2CCommandsState i2c_commands_state;
-#ifdef HAS_RS485
+#if HAS_RS485 && !USE_PHOTON_FEEDERS
 static struct FeedersState feeders;
 #endif
 
@@ -75,11 +75,15 @@ int main() {
     gpio_set_function(PIN_UART_TX, GPIO_FUNC_UART);
     gpio_set_function(PIN_UART_RX, GPIO_FUNC_UART);
 
-#ifdef HAS_RS485
+#if HAS_RS485
     report_debug_ln("starting RS485 & feeder communication...");
     rs485_init();
+#if USE_PHOTON_FEEDERS
+    Photon_init();
+#else
     feeders_init(&feeders);
 #endif
+#endif // HAS_RS485
 
     report_debug_ln("configuring motion and stepper motors...");
     // TODO: Check for errors!
@@ -381,7 +385,14 @@ static void run_m_command(struct lilg_Command cmd) {
             // no-op since Fishfood does not reply to G0/G1 until moves are finished.
         } break;
 
-#ifdef HAS_RS485
+#if HAS_RS485
+#if USE_PHOTON_FEEDERS
+        // M485: Photon feeder command payload
+        // M485 "{quoted payload}"
+        case 485: {
+            Photon_parse_and_execute(cmd.quoted_string);
+        } break;
+#else // NOT USE_PHOTON_FEEDERS
         // M485: Get feeder info
         // Non-standard
         // M485 P{feeder number}
@@ -410,8 +421,8 @@ static void run_m_command(struct lilg_Command cmd) {
         case 489: {
             feeders_scan(&feeders);
         } break;
-#endif
-
+#endif // USE_PHOTON_FEEDERS
+#endif // HAS_RS485
         // M503 Report Settings
         // https://marlinfw.org/docs/gcode/M503.html
         case 503: {

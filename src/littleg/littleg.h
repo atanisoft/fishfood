@@ -15,6 +15,8 @@ https://opensource.org/licenses/MIT. */
 #define LILG_FIELDC(command, c) (command.fields[(size_t)(c - 'A')])
 #define LILG_FIELD(command, letter) (command.fields[(size_t)(#letter[0] - 'A')])
 
+#define LILG_MAX_QUOTED_STRING_LENGTH 64
+
 /* Structs */
 
 struct lilg_Decimal {
@@ -32,6 +34,7 @@ struct lilg_Command {
     struct lilg_Decimal Y;
     struct lilg_Decimal Z;
     struct lilg_Decimal fields[26];
+    char quoted_string[LILG_MAX_QUOTED_STRING_LENGTH + 1];
 };
 
 enum lilg_ParseResult {

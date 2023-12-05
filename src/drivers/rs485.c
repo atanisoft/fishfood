@@ -12,7 +12,7 @@ https://opensource.org/licenses/MIT. */
 #include "pico/time.h"
 #include <stdio.h>
 
-#ifdef HAS_RS485
+#if HAS_RS485
 
 void rs485_init() {
     uart_init(RS485_UART_INST, RS485_BAUD);
@@ -50,4 +50,4 @@ int rs485_read() {
     }
     return uart_getc(RS485_UART_INST);
 }
-#endif
+#endif // HAS_RS485

@@ -16,5 +16,7 @@ https://opensource.org/licenses/MIT. */
 #define I2C_MUX_ADDR (0x58)
 
 #ifdef STARFISH
-#define HAS_RS485
+#define HAS_RS485 1
+#else
+#define HAS_RS485 0
 #endif
