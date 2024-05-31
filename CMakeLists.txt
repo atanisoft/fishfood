@@ -8,7 +8,7 @@ option(USE_SENSORLESS_Z "Use sensorless Z homing?"
        OFF)
 
 option(USE_PHOTON_FEEDERS "Use Photon feeder protocol?"
-       OFF)
+       ON)
 
 include(pico_sdk_import.cmake)
 
