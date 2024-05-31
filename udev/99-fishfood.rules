@@ -5,5 +5,5 @@
 ##
 ## Imported from https://github.com/casartar/fishfood by atanisoft.
 
-ACTION=="add", ENV{ID_VENDOR_ID}=="cafe", ENV{ID_MODEL_ID}=="aa68", SYMLINK+="starfish", MODE="660", GROUP="usb"
-ACTION=="add", ENV{ID_VENDOR_ID}=="cafe", ENV{ID_MODEL_ID}=="aa69", SYMLINK+="jellyfish", MODE="660", GROUP="usb"
+ACTION=="add", ENV{ID_VENDOR_ID}=="cafe", ENV{ID_MODEL_ID}=="aa68", SYMLINK+="starfish", MODE="660", GROUP="plugdev"
+ACTION=="add", ENV{ID_VENDOR_ID}=="cafe", ENV{ID_MODEL_ID}=="aa69", SYMLINK+="jellyfish", MODE="660", GROUP="plugdev"

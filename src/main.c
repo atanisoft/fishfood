@@ -107,8 +107,9 @@ int main() {
         if (in_c == EOF) {
             break;
         }
-
+        gpio_put(PIN_AUX_LED, true);
         process_incoming_char((char)(in_c));
+        gpio_put(PIN_AUX_LED, false);
     }
 
     report_error_ln("main() loop exited due to end of file on stdin");
@@ -168,6 +169,7 @@ static void run_g_command(struct lilg_Command cmd) {
         // OpenPnP sends this as part of CONNECT_COMMAND by default.
         case 21: {
             // no op
+            report_info_ln("Ignoring G%li as not needed", cmd.G.real);
         } break;
 
         // Home axes
