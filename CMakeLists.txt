@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-if(NOT PICO_SDK_PATH)
+if(NOT PICO_SDK_PATH AND NOT DEFINED ENV{PICO_SDK_PATH})
   set(PICO_SDK_PATH "/opt/pico-sdk")
 endif()
 
