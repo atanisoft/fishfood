@@ -34,34 +34,35 @@ CONTROL_BOARD_TYPE = 'Winterbloom'
 # existing feeders will be removed.
 CLEANUP_EXISTING_FEEDERS = True
 
-# WIDE_BODY_MOD controls the X axis limits, in the default case the limits are
+# X_AXIS_LIMIT controls the X axis limits, in the default case the limits are
 # based on the 600mm extrusion used in the default Lumen configuration. When
 # the machine has been modified with the Wide Body mod the X extrusion is
 # increased to 800mm providing access for both the left and right nozzles to
 # reach the full width of the staging plate(s) and feeders on front and rear
 # rails.
-WIDE_BODY_MOD = True
+#
+# For Wide Body this should be 715, for normal this should be 433.
+X_AXIS_LIMIT = 715
 
-# DUAL_NOZZLE controls the number of nozzles to be created on the default head.
-# Most Lumen kits were single nozzle but newer v3 machines are dual nozzle.
-DUAL_NOZZLE = True
+# Y_AXIS_LIMIT controls the Y axis limits, in the default case the limits are
+# based on the 600mm extrusion used in the default Lumen configuration.
+Y_AXIS_LIMIT = 487
+
+# Z_AXIS_LIMIT controls the Z axis limits, in the default case the limits are
+# based on the 100mm linear rail used in the default Lumen configuration.
+#
+# Since the Z axis is configured as inverted for Left / Right the limit is
+# reduced to 62 with ~31mm total motion for left and right each.
+Z_AXIS_LIMIT = 62
 
 # USE_OPENCV_CAMERAS switches the camera capture type from OpenPnPCaptureCamera
 # to OpenCVCamera.
 USE_OPENCV_CAMERAS = False
 
-# USE_PHOTON_FEEDERS should be enabled if you intend to use Opulo Feeders with
-# your OpenPnP configuration
-USE_PHOTON_FEEDERS = True
-
-# When USE_LINEAR_RAILS is set to True the CONNECT_COMMAND gcode will be
-# modified to increase movement speeds.
-USE_LINEAR_RAILS = False
-
 # X_HOMING_SENSITIVITY and Y_HOMING_SENSITIVITY configure the sensitivity of
 # sensorless homing.
-X_HOMING_SENSITIVITY = 50
-Y_HOMING_SENSITIVITY = 30
+X_HOMING_SENSITIVITY = 100
+Y_HOMING_SENSITIVITY = 150
 
 # TOP_CAMERA_OPENCV_INDEX and BOTTOM_CAMERA_OPENCV_INDEX are the v4l2-ctl
 # device numbers to use when USE_OPENCV_CAMERAS is set to True
@@ -73,46 +74,90 @@ BOTTOM_CAMERA_OPENCV_INDEX = 2
 if CONTROL_BOARD_TYPE.lower() == 'opulo':
     BASE_GCODE_DRIVER_NAME = 'Lumen'
     HEAD_GCODE_DRIVER_NAME = 'Lumen'
-    CONNECT_COMMAND_GCODE =
+
+    LEFT_NOZZLE_PUMP_GCODE = '{True:M106 P2 S255}{False:M107 P2}'
+    LEFT_NOZZLE_SOLENOID_GCODE = '{True:M106 P3 S255}{False:M107 P3}'
+    LEFT_NOZZLE_VAC_READ_GCODE =
     [
-        'G21 ; Set millimeters mode',
-        'G90 ; Set absolute positioning mode',
-        'M82 ; Set absolute mode for extruder',
+        'M260 A112 B1 S1 ; Select vac1 through multiplexer',
+        'M260 A109 B6 S1 ; Selects MSB register',
+        'M261 A109 B1 S2 ; Request one byte back via decimal'
     ]
 
-    if USE_LINEAR_RAILS:
-        CONNECT_COMMAND_GCODE.append(
-        [
-            'M569 S0 X Y ; Switch from stealthChop to spreadCycle',
-            'M204 T5000 ; Set max travel acceleration',
-            'M201 Y3500 ; Set max Y acceleration',
-            'M906 Y1200 ; Set Y motor current',
-            'M201 X5000 ; Set max X acceleration',
-            'M203 X1000 Y1000 ; Set max feedrate in mm/min',
-            'M906 A200 ; Set L motor current',
-            'M906 B200 ; Set R motor current',
-        ])
+    RIGHT_NOZZLE_PUMP_GCODE = '{True:M106 P0 S255}{False:M107 P0}'
+    RIGHT_NOZZLE_SOLENOID_GCODE = '{True:M106 P1 S255}{False:M107 P1}'
+    RIGHT_NOZZLE_VAC_READ_GCODE =
+    [
+        'M260 A112 B2 S1 ; Select vac1 through multiplexer',
+        'M260 A109 B6 S1 ; Selects MSB register',
+        'M261 A109 B2 S2 ; Request one byte back via decimal'
+    ]
 
-    GCODE_DRIVERS = [
+    VAC_SENSE_REGEX = '.*data:(?<Value>.*)'
+
+    READ_ACTUATOR_TEXT = 'M485 {value}'
+
+    BOTTOM_LED_GCODE = 'M150 P{DoubleValue:%.0f} R255 U255 B255 S0'
+    TOP_LED_GCODE = 'M150 P{DoubleValue:%.0f} R255 U255 B255 S1'
+
+    MAX_ACCELERATION_RATE = 5000.0
+
+    X_ACCELERATION_RATE = 5000.0
+    X_MOTOR_CURRENT = 1200
+    X_FEED_RATE = 1000.0
+    X_JERK_RATE = 10000.0
+
+    Y_ACCELERATION_RATE = 3500.0
+    Y_MOTOR_CURRENT = 1200
+    Y_FEED_RATE = 1000.0
+    Y_JERK_RATE = 10000.0
+
+    NOZZLE_MOTOR_CURRENT = 200
+    NOZZLE_ACCELERATION_RATE = 500.0
+    NOZZLE_FEED_RATE = 50000.0
+    NOZZLE_JERK_RATE = 2000.0
+
+    GCODE_DRIVERS =
+    [
+        # Main Board
         {
             'name' : BASE_GCODE_DRIVER_NAME,
             'gcode': [
+                # COMMAND_CONFIRM_REGEX
                 {
                     'type': GcodeDriver.CommandType.COMMAND_CONFIRM_REGEX,
                     'value': '^ok.*'
                 },
+                # COMMAND_ERROR_REGEX
                 {
                     'type': GcodeDriver.CommandType.COMMAND_ERROR_REGEX,
                     'value': '^\!\>.*'
                 },
+                # CONNECT_COMMAND
                 {
                     'type': GcodeDriver.CommandType.CONNECT_COMMAND,
-                    'value': CONNECT_COMMAND_GCODE
+                    'value':
+                    [
+                        'G90 ; Set absolute positioning mode',
+                        'M260 A112 B1 S1 ; Selecting VAC1 through the I2C multiplexer',
+                        'M260 A109 ; Starts Command to VAC sensor at address 109',
+                        'M260 B48 ; Address Byte 48 selects CMD register',
+                        'M260 B27 ; Sends byte to select 62.5 sleep time, SCO, sleep mode conversion (0001 1 011)',
+                        'M260 S1 ; Sends data',
+                        'M260 A112 B2 S1 ; Selecting VAC2 through the I2C multiplexer',
+                        'M260 A109 ; Starts Command to VAC sensor at address 109',
+                        'M260 B48 ; Address Byte 48 selects CMD register',
+                        'M260 B27 ; Sends byte to select 62.5 sleep time, SCO, sleep mode conversion (0001 1 011)',
+                        'M260 S1 ; Sends data',
+                        'M569 S0 X Y ; Switch from stealthChop to spreadCycle',
+                    ]
                 },
+                # ENABLE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.ENABLE_COMMAND,
                     'value': 'M17'
                 },
+                # DISABLE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.DISABLE_COMMAND,
                     'value':
@@ -124,87 +169,140 @@ if CONTROL_BOARD_TYPE.lower() == 'opulo':
                         'M107 P3',
                     ]
                 },
+                # HOME_COMMAND
                 {
                     'type': GcodeDriver.CommandType.HOME_COMMAND,
                     'value':
                     [
-                        '{Acceleration:M204 S%.2f ; Initialize acceleration}',
+                        'M204 T2000 ; Sets acceleration for homing',
                         f'M914 X{X_HOMING_SENSITIVITY} Y{Y_HOMING_SENSITIVITY} ; Set Homing sensitivity',
                         'G28 ; Home all axes'
                     ]
                 },
+                # SET_GLOBAL_OFFSETS_COMMAND
                 {
                     'type': GcodeDriver.CommandType.SET_GLOBAL_OFFSETS_COMMAND,
-                    'value': 'G92 {X:X%.4f} {Y:Y%.4f} ; reset coordinates'
+                    'value': 'G92 {X:X%.4f} {Y:Y%.4f} {Z:Z%.4f} {A:A%.4f} {B:B%.4f} ; reset coordinates'
                 },
+                # GET_POSITION_COMMAND
                 {
                     'type': GcodeDriver.CommandType.GET_POSITION_COMMAND,
                     'value': 'M114 ; get position'
                 },
+                # MOVE_TO_COMMAND
                 {
                     'type': GcodeDriver.CommandType.MOVE_TO_COMMAND,
                     'value':
                     [
                         '{Acceleration:M204 S%.2f ; Initialize acceleration}',
-                        'G1 {X:X%.4f} {Y:Y%.4f} {Z:Z%.4f} {A:A%.4f} {B:B%.4f} {FeedRate:F%.2f} ; move to target'
+                        'G0 {X:X%.4f} {Y:Y%.4f} {Z:Z%.4f} {A:A%.4f} {B:B%.4f} F{FeedRate:%.0f} ; Send standard Gcode move',
                     ]
                 },
+                # MOVE_TO_COMPLETE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.MOVE_TO_COMPLETE_COMMAND,
                     'value': 'M400 ; Wait for moves to complete before returning'
                 },
+                # POSITION_REPORT_REGEX
                 {
                     'type': GcodeDriver.CommandType.POSITION_REPORT_REGEX,
-                    'value': '^.*.*'
+                    'value': '^.*X:(?<X>-?\d+\.\d+) Y:(?<Y>-?\d+\.\d+) Z:(?<Z>-?\d+\.\d+) A:(?<A>-?\d+\.\d+) B:(?<B>-?\d+\.\d+).*'
                 },
             ]
         },
     ]
+
 elif CONTROL_BOARD_TYPE.lower() == 'winterbloom':
     BASE_GCODE_DRIVER_NAME = 'Starfish'
     HEAD_GCODE_DRIVER_NAME = 'Jellyfish'
-    GCODE_DRIVERS = [
+
+    LEFT_NOZZLE_PUMP_GCODE = 'M42 P0 S{True:1}{False:0} T1'
+    LEFT_NOZZLE_SOLENOID_GCODE = 'M42 P2 S{True:1}{False:0} T1'
+    LEFT_NOZZLE_VAC_READ_GCODE = 'M263 P0'
+
+    RIGHT_NOZZLE_PUMP_GCODE = 'M42 P1 S{True:1}{False:0} T1'
+    RIGHT_NOZZLE_SOLENOID_GCODE = 'M42 P3 S{True:1}{False:0} T1'
+    RIGHT_NOZZLE_VAC_READ_GCODE = 'M263 P1'
+
+    VAC_SENSE_REGEX = '.*pressure:(?<Value>\d+).*'
+
+    READ_ACTUATOR_TEXT = 'M485 "{value}"'
+
+    BOTTOM_LED_GCODE = 'M150 P{DoubleValue:%.0f} R255 U255 B255'
+    TOP_LED_GCODE = 'M150 P{DoubleValue:%.0f} R255 U255 B255'
+
+    MAX_ACCELERATION_RATE = 5000.0
+
+    X_ACCELERATION_RATE = 2000.0
+    X_MOTOR_CURRENT = 1000
+    X_FEED_RATE = 1000.0
+    X_JERK_RATE = 10000.0
+
+    Y_ACCELERATION_RATE = 2000.0
+    Y_MOTOR_CURRENT = 1000
+    Y_FEED_RATE = 1000.0
+    Y_JERK_RATE = 10000.0
+
+    NOZZLE_MOTOR_CURRENT = 200
+    NOZZLE_ACCELERATION_RATE = 500.0
+    NOZZLE_FEED_RATE = 50000.0
+    NOZZLE_JERK_RATE = 2000.0
+
+    GCODE_DRIVERS =
+    [
+        # Starfish
         {
             'name' : BASE_GCODE_DRIVER_NAME,
-            'gcode': [
+            'gcode':
+            [
+                # COMMAND_CONFIRM_REGEX
                 {
                     'type': GcodeDriver.CommandType.COMMAND_CONFIRM_REGEX,
                     'value': '^ok.*'
                 },
+                # COMMAND_ERROR_REGEX
                 {
                     'type': GcodeDriver.CommandType.COMMAND_ERROR_REGEX,
                     'value': '^\!\>.*'
                 },
+                # CONNECT_COMMAND
                 {
                     'type': GcodeDriver.CommandType.CONNECT_COMMAND,
                     'value': [
-                        'G21 ; Set millimeters mode'
+                        f'M914 X{X_HOMING_SENSITIVITY} Y{Y_HOMING_SENSITIVITY} ; Set Homing sensitivity',
                         'G90',
                     ]
                 },
+                # ENABLE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.ENABLE_COMMAND,
                     'value': 'M17'
                 },
+                # DISABLE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.DISABLE_COMMAND,
                     'value': 'M18'
                 },
+                # HOME_COMMAND
                 {
                     'type': GcodeDriver.CommandType.HOME_COMMAND,
                     'value': [
-                        '{Acceleration:M204 S%.2f ; Initialize acceleration}',
-                        'G28 ; Home all axes'
+                        #'{Acceleration:M204 S%.2f ; Initialize acceleration}',
+                        #f'M914 X{X_HOMING_SENSITIVITY} Y{Y_HOMING_SENSITIVITY} ; Set Homing sensitivity',
+                        'G28 X Y ; Home all axes'
                     ]
                 },
+                # SET_GLOBAL_OFFSETS_COMMAND
                 {
                     'type': GcodeDriver.CommandType.SET_GLOBAL_OFFSETS_COMMAND,
                     'value': 'G92 {X:X%.4f} {Y:Y%.4f} ; reset coordinates'
                 },
+                # GET_POSITION_COMMAND
                 {
                     'type': GcodeDriver.CommandType.GET_POSITION_COMMAND,
                     'value': 'M114 ; get position'
                 },
+                # MOVE_TO_COMMAND
                 {
                     'type': GcodeDriver.CommandType.MOVE_TO_COMMAND,
                     'value': [
@@ -212,71 +310,87 @@ elif CONTROL_BOARD_TYPE.lower() == 'winterbloom':
                         'G1 {X:X%.4f} {Y:Y%.4f} {FeedRate:F%.2f}; move to target'
                     ]
                 },
+                # MOVE_TO_COMPLETE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.MOVE_TO_COMPLETE_COMMAND,
                     'value': 'M400 ; Wait for moves to complete before returning'
                 },
+                # POSITION_REPORT_REGEX
                 {
                     'type': GcodeDriver.CommandType.POSITION_REPORT_REGEX,
-                    'value': '^.*.*'
+                    'value': '^.*X:(?<X>-?\d+\.\d+) Y:(?<Y>-?\d+\.\d+).*'
                 },
             ]
         },
+        # Jellyfish
         {
             'name' : HEAD_GCODE_DRIVER_NAME,
-            'gcode': [
+            'gcode':
+            [
+                # COMMAND_CONFIRM_REGEX
                 {
                     'type': GcodeDriver.CommandType.COMMAND_CONFIRM_REGEX,
                     'value': '^ok.*'
                 },
+                # COMMAND_ERROR_REGEX
                 {
                     'type': GcodeDriver.CommandType.COMMAND_ERROR_REGEX,
                     'value': '^\!\>.*'
                 },
+                # CONNECT_COMMAND
                 {
                     'type': GcodeDriver.CommandType.CONNECT_COMMAND,
-                    'value': [
-                        'G21 ; Set millimeters mode'
+                    'value':
+                    [
                         'G90',
                     ]
                 },
+                # ENABLE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.ENABLE_COMMAND,
                     'value': 'M17'
                 },
+                # DISABLE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.DISABLE_COMMAND,
                     'value': 'M18'
                 },
+                # HOME_COMMAND
                 {
                     'type': GcodeDriver.CommandType.HOME_COMMAND,
                     'value': [
                         '{Acceleration:M204 S%.2f ; Initialize acceleration}',
-                        'G28 ; Home all axes'
+                        'G28 Z A B ; Home all axes'
                     ]
                 },
+                # SET_GLOBAL_OFFSETS_COMMAND
                 {
                     'type': GcodeDriver.CommandType.SET_GLOBAL_OFFSETS_COMMAND,
                     'value': 'G92 {Z:Z%.4f} {A:A%.4f} {B:B%.4f} ; reset coordinates'
                 },
+                # GET_POSITION_COMMAND
                 {
                     'type': GcodeDriver.CommandType.GET_POSITION_COMMAND,
                     'value': 'M114 ; get position'
                 },
+                # MOVE_TO_COMMAND
                 {
                     'type': GcodeDriver.CommandType.MOVE_TO_COMMAND,
-                    'value': [
+                    'value':
+                    [
                         '{Acceleration:M204 S%.2f ; Initialize acceleration}',
                         'G1 {Z:Z%.4f} {A:A%.4f} {B:B%.4f} {FeedRate:F%.2f} ; move to target'
                     ]
                 },
+                # MOVE_TO_COMPLETE_COMMAND
                 {
                     'type': GcodeDriver.CommandType.MOVE_TO_COMPLETE_COMMAND,
                     'value': 'M400 ; Wait for moves to complete before returning'
                 },
+                # POSITION_REPORT_REGEX
                 {
                     'type': GcodeDriver.CommandType.POSITION_REPORT_REGEX,
-                    'value': '^.*.*'
+                    'value': '^.*Z:(?<Z>-?\d+\.\d+) A:(?<A>-?\d+\.\d+) B:(?<B>-?\d+\.\d+).*'
                 },
             ]
         },
@@ -285,82 +399,87 @@ else:
     print('Unrecognized machine type: {}'.format(CONTROL_BOARD_TYPE))
     return
 
-if WIDE_BODY_MOD:
-    X_AXIS_LIMIT = 715
-else:
-    X_AXIS_LIMIT = 515
-
-AXES = [
+AXES =
+[
+    # X Axis
     {
-        'name': 'x',
+        'name': Axis.Type.X.getDefaultLetter(),
         'className': 'Controller',
         'type': Axis.Type.X,
         'gcodeDriver': BASE_GCODE_DRIVER_NAME,
         'softLimits': [ 0, X_AXIS_LIMIT ],
-        'feedRate' : 250.0,
-        'accelleration': 3000.0,
-        'jerk': 10000.0
+        'feedRate' : X_FEED_RATE,
+        'accelleration': X_ACCELERATION_RATE,
+        'jerk': X_JERK_RATE
     },
+    # Y Axis
     {
-        'name': 'y',
+        'name': Axis.Type.Y.getDefaultLetter(),
         'className': 'Controller',
         'type': Axis.Type.Y,
         'gcodeDriver': BASE_GCODE_DRIVER_NAME,
-        'softLimits': [ 0, 480 ],
-        'feedRate' : 200.0,
-        'accelleration': 3000.0,
-        'jerk': 10000.0
+        'softLimits': [ 0, Y_AXIS_LIMIT ],
+        'feedRate' : Y_FEED_RATE,
+        'accelleration': Y_ACCELERATION_RATE,
+        'jerk': Y_JERK_RATE
     },
+    # Z Axis
     {
-        'name': 'z',
+        'name': Axis.Type.Z.getDefaultLetter(),
         'className': 'Controller',
         'type': Axis.Type.Z,
         'gcodeDriver': HEAD_GCODE_DRIVER_NAME,
-        'softLimits': [ 0, 62 ],
-        'safeZone': [ 30.5, 30.5 ],
+        'softLimits': [ 0, Z_AXIS_LIMIT ],
+        'safeZone': [ ((Z_AXIS_LIMIT - 1) / 2), ((Z_AXIS_LIMIT - 1) / 2) ],
         'feedRate' : 500.0,
         'accelleration': 300.0,
         'jerk': 0.0
     },
+    # Left Nozzle Axis (A)
     {
-        'name': 'a',
+        'name': 'A',
         'className': 'Controller',
         'type': Axis.Type.Rotation,
         'gcodeDriver': HEAD_GCODE_DRIVER_NAME,
-        'softLimits': [ -180, 180 ],
-        'feedRate' : 50000.0,
-        'accelleration': 500.0,
-        'jerk': 2000.0
+        'softLimits': [ -200, 200 ],
+        'feedRate' : NOZZLE_FEED_RATE,
+        'accelleration': NOZZLE_ACCELERATION_RATE,
+        'jerk': NOZZLE_JERK_RATE
     },
+    # Right Nozzle Axis (B)
     {
-        'name': 'b',
+        'name': 'B',
         'className': 'Controller',
         'type': Axis.Type.Rotation,
         'gcodeDriver': HEAD_GCODE_DRIVER_NAME,
-        'softLimits': [ -180, 180 ],
-        'feedRate' : 50000.0,
-        'accelleration': 500.0,
-        'jerk': 2000.0
+        'softLimits': [ -200, 200 ],
+        'feedRate' : NOZZLE_FEED_RATE,
+        'accelleration': NOZZLE_ACCELERATION_RATE,
+        'jerk': NOZZLE_JERK_RATE
     },
+    # Left Nozzle Mapped Axis
     {
         'name': 'Left Z',
         'className': 'Mapped',
         'type': Axis.Type.Z,
-        'inputAxis': 'z',
-        'mapping' : [30.5, 0, 31.5, 1]
+        'inputAxis': Axis.Type.Z.getDefaultLetter(),
+        'mapping' : [((Z_AXIS_LIMIT - 1) / 2) -1, 0, ((Z_AXIS_LIMIT - 1) / 2), 1]
     },
+    # Right Nozzle Mapped Axis
     {
         'name': 'Right Z',
         'className': 'Mapped',
         'type': Axis.Type.Z,
-        'inputAxis': 'z',
-        'mapping' : [30.5, 0, 29.5, 1]
+        'inputAxis': Axis.Type.Z.getDefaultLetter(),
+        'mapping' : [((Z_AXIS_LIMIT - 1) / 2) - 1, 0, ((Z_AXIS_LIMIT - 1) / 2) - 2, 1]
     },
+    # Camera Z axis (Virtual)
     {
         'name': 'Camera Z',
         'className': 'Virtual',
         'type': Axis.Type.Z,
     },
+    # Camera Rotation axis (Virtual)
     {
         'name': 'Camera Rotation',
         'className': 'Virtual',
@@ -368,7 +487,9 @@ AXES = [
     }
 ]
 
-CAMERAS = [
+CAMERAS =
+[
+    # Top Camera
     {
         'name' : 'Top Camera',
         'dir' : Camera.Looking.Down,
@@ -378,6 +499,7 @@ CAMERAS = [
         'previewFPS' : 10,
         'deviceIndex' : TOP_CAMERA_OPENCV_INDEX
     },
+    # Bottom Camera
     {
         'name' : 'Bottom Camera',
         'dir' : Camera.Looking.Up,
@@ -389,14 +511,9 @@ CAMERAS = [
     },
 ]
 
-BOTTOM_LED_GCODE = 'M150 P{DoubleValue:%.0f} R255 U255 B255'
-TOP_LED_GCODE = 'M150 P{DoubleValue:%.0f} R255 U255 B255'
-
-if CONTROL_BOARD_TYPE.lower() == 'opulo':
-    BOTTOM_LED_GCODE = 'M150 P{DoubleValue:%.0f} R255 U255 B255 S0'
-    TOP_LED_GCODE = 'M150 P{DoubleValue:%.0f} R255 U255 B255 S1'
-
-ACTUATORS = [
+ACTUATORS =
+[
+    # Bottom LED
     {
         'name' : 'Bottom LED',
         'type' : Actuator.ActuatorValueType.Double,
@@ -413,6 +530,7 @@ ACTUATORS = [
             },
         ]
     },
+    # Top LED
     {
         'name' : 'Top LED',
         'type' : Actuator.ActuatorValueType.Double,
@@ -429,6 +547,7 @@ ACTUATORS = [
             },
         ]
     },
+    # Left Nozzle Pump
     {
         'name' : 'Left Nozzle Pump',
         'type' : Actuator.ActuatorValueType.Boolean,
@@ -441,10 +560,11 @@ ACTUATORS = [
         'gcode': [
             {
                 'type': GcodeDriver.CommandType.ACTUATE_BOOLEAN_COMMAND,
-                'value': 'M42 P0 S{True:1}{False:0} T1'
+                'value': LEFT_NOZZLE_PUMP_GCODE
             },
         ]
     },
+    # Left Nozzle Valve
     {
         'name' : 'Left Nozzle Valve',
         'type' : Actuator.ActuatorValueType.Boolean,
@@ -457,10 +577,11 @@ ACTUATORS = [
         'gcode': [
             {
                 'type': GcodeDriver.CommandType.ACTUATE_BOOLEAN_COMMAND,
-                'value': 'M42 P2 S{True:1}{False:0} T1'
+                'value': LEFT_NOZZLE_SOLENOID_GCODE
             },
         ]
     },
+    # Left Nozzle Pump and Valve
     {
         'name' : 'Left Nozzle Pump and Valve',
         'type' : Actuator.ActuatorValueType.Profile,
@@ -481,6 +602,7 @@ ACTUATORS = [
         'disabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
         'homed' : ReferenceActuator.MachineStateActuation.ActuateOff,
     },
+    # Left Nozzle Vacuum Sensor
     {
         'name' : 'Left Nozzle Vacuum Sense',
         'type' : Actuator.ActuatorValueType.Double,
@@ -493,33 +615,91 @@ ACTUATORS = [
         'gcode': [
             {
                 'type': GcodeDriver.CommandType.ACTUATOR_READ_COMMAND,
-                'value': 'M263 P0'
+                'value': LEFT_NOZZLE_VAC_READ_GCODE
             },
             {
                 'type': GcodeDriver.CommandType.ACTUATOR_READ_REGEX,
-                'value': 'pressure:(?<Value>\d+)'
+                'value': VAC_SENSE_REGEX
             },
         ]
     },
-]
-
-NOZZLES = [
+    # Right Nozzle Pump
     {
-        'name' : 'Left Nozzle',
-        'vacuumActuator' : 'Left Nozzle Pump and Valve',
-        'vacuumSenseActuator' : 'Left Nozzle Vacuum Sense',
-        'x' : 'x',
-        'y' : 'y',
-        'z' : 'Left Z',
-        'rotation' : 'a'
+        'name' : 'Right Nozzle Pump',
+        'type' : Actuator.ActuatorValueType.Boolean,
+        'defaults': [255.0, 0],
+        'headMounted': True,
+        'gcodeDriver' : BASE_GCODE_DRIVER_NAME,
+        'enabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
+        'disabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
+        'homed' : ReferenceActuator.MachineStateActuation.ActuateOff,
+        'gcode': [
+            {
+                'type': GcodeDriver.CommandType.ACTUATE_BOOLEAN_COMMAND,
+                'value': RIGHT_NOZZLE_PUMP_GCODE
+            },
+        ]
     },
-]
-
-if USE_PHOTON_FEEDERS:
-    READ_ACTUATOR_TEXT = 'M485 {value}'
-    if CONTROL_BOARD_TYPE.lower() == 'winterbloom':
-        READ_ACTUATOR_TEXT = 'M485 "{value}"'
-    ACTUATORS.append(
+    # Right Nozzle Valve
+    {
+        'name' : 'Right Nozzle Valve',
+        'type' : Actuator.ActuatorValueType.Boolean,
+        'defaults': [255.0, 0],
+        'headMounted': True,
+        'gcodeDriver' : BASE_GCODE_DRIVER_NAME,
+        'enabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
+        'disabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
+        'homed' : ReferenceActuator.MachineStateActuation.ActuateOff,
+        'gcode': [
+            {
+                'type': GcodeDriver.CommandType.ACTUATE_BOOLEAN_COMMAND,
+                'value': RIGHT_NOZZLE_VAC_READ_GCODE
+            },
+        ]
+    },
+    # Right Nozzle Pump and Valve
+    {
+        'name' : 'Right Nozzle Pump and Valve',
+        'type' : Actuator.ActuatorValueType.Profile,
+        'headMounted': True,
+        'actuators': ['Right Nozzle Pump', 'Right Nozzle Valve'],
+        'profiles' : [
+            {
+                'name': 'ON',
+                'default': True,
+                
+            },
+            {
+                'name': 'OFF',
+                'default': False,
+            }
+        ],
+        'enabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
+        'disabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
+        'homed' : ReferenceActuator.MachineStateActuation.ActuateOff,
+    },
+    # Right Nozzle Vacuum Sensor
+    {
+        'name' : 'Right Nozzle Vacuum Sense',
+        'type' : Actuator.ActuatorValueType.Double,
+        'defaults': [0, 0],
+        'headMounted': True,
+        'gcodeDriver' : BASE_GCODE_DRIVER_NAME,
+        'enabled' : ReferenceActuator.MachineStateActuation.AssumeUnknown,
+        'disabled' : ReferenceActuator.MachineStateActuation.LeaveAsIs,
+        'homed' : ReferenceActuator.MachineStateActuation.LeaveAsIs,
+        'gcode': [
+            {
+                'type': GcodeDriver.CommandType.ACTUATOR_READ_COMMAND,
+                'value': RIGHT_NOZZLE_VAC_READ_GCODE
+            },
+            {
+                'type': GcodeDriver.CommandType.ACTUATOR_READ_REGEX,
+                'value': VAC_SENSE_REGEX
+            },
+        ]
+    }
+    # Photon Feeder Actuator
     {
         'name' : 'PhotonFeederData',
         'type' : Actuator.ActuatorValueType.String,
@@ -538,96 +718,42 @@ if USE_PHOTON_FEEDERS:
                 'value': 'rs485-reply: (?<Value>.*)'
             },
         ]
-    })
+    }
+]
 
-if DUAL_NOZZLE:
-    ACTUATORS.append(
-        {
-            'name' : 'Right Nozzle Pump',
-            'type' : Actuator.ActuatorValueType.Boolean,
-            'defaults': [255.0, 0],
-            'headMounted': True,
-            'gcodeDriver' : BASE_GCODE_DRIVER_NAME,
-            'enabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
-            'disabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
-            'homed' : ReferenceActuator.MachineStateActuation.ActuateOff,
-            'gcode': [
-                {
-                    'type': GcodeDriver.CommandType.ACTUATE_BOOLEAN_COMMAND,
-                    'value': 'M42 P1 S{True:1}{False:0} T1'
-                },
-            ]
-        },
-        {
-            'name' : 'Right Nozzle Valve',
-            'type' : Actuator.ActuatorValueType.Boolean,
-            'defaults': [255.0, 0],
-            'headMounted': True,
-            'gcodeDriver' : BASE_GCODE_DRIVER_NAME,
-            'enabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
-            'disabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
-            'homed' : ReferenceActuator.MachineStateActuation.ActuateOff,
-            'gcode': [
-                {
-                    'type': GcodeDriver.CommandType.ACTUATE_BOOLEAN_COMMAND,
-                    'value': 'M42 P3 S{True:1}{False:0} T1'
-                },
-            ]
-        },
-        {
-            'name' : 'Right Nozzle Pump and Valve',
-            'type' : Actuator.ActuatorValueType.Profile,
-            'headMounted': True,
-            'actuators': ['Right Nozzle Pump', 'Right Nozzle Valve'],
-            'profiles' : [
-                {
-                    'name': 'ON',
-                    'default': True,
-                    
-                },
-                {
-                    'name': 'OFF',
-                    'default': False,
-                }
-            ],
-            'enabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
-            'disabled' : ReferenceActuator.MachineStateActuation.ActuateOff,
-            'homed' : ReferenceActuator.MachineStateActuation.ActuateOff,
-        },
-        {
-            'name' : 'Right Nozzle Vacuum Sense',
-            'type' : Actuator.ActuatorValueType.Double,
-            'defaults': [0, 0],
-            'headMounted': True,
-            'gcodeDriver' : BASE_GCODE_DRIVER_NAME,
-            'enabled' : ReferenceActuator.MachineStateActuation.AssumeUnknown,
-            'disabled' : ReferenceActuator.MachineStateActuation.LeaveAsIs,
-            'homed' : ReferenceActuator.MachineStateActuation.LeaveAsIs,
-            'gcode': [
-                {
-                    'type': GcodeDriver.CommandType.ACTUATOR_READ_COMMAND,
-                    'value': 'M263 P1'
-                },
-                {
-                    'type': GcodeDriver.CommandType.ACTUATOR_READ_REGEX,
-                    'value': 'pressure:(?<Value>\d+)'
-                },
-            ]
-        }
-    )
-    NOZZLES.append(
-        {
-            'name' : 'Right Nozzle',
-            'vacuumActuator' : 'Right Nozzle Pump and Valve',
-            'vacuumSenseActuator' : 'Right Nozzle Vacuum Sense',
-            'x' : 'x',
-            'y' : 'y',
-            'z' : 'Right Z',
-            'rotation' : 'b'
-        }
-    )
+NOZZLES =
+[
+    # Left Nozzle
+    {
+        'name' : 'Left Nozzle',
+        'vacuumActuator' : 'Left Nozzle Pump and Valve',
+        'vacuumSenseActuator' : 'Left Nozzle Vacuum Sense',
+        Axis.Type.X : Axis.Type.X.getDefaultLetter(),
+        Axis.Type.Y : Axis.Type.Y.getDefaultLetter(),
+        Axis.Type.Z : 'Left Z',
+        Axis.Type.Rotation : 'A'
+    },
+    # Right Nozzle
+    {
+        'name' : 'Right Nozzle',
+        'vacuumActuator' : 'Right Nozzle Pump and Valve',
+        'vacuumSenseActuator' : 'Right Nozzle Vacuum Sense',
+        Axis.Type.X : Axis.Type.X.getDefaultLetter(),
+        Axis.Type.Y : Axis.Type.Y.getDefaultLetter(),
+        Axis.Type.Z : 'Right Z',
+        Axis.Type.Rotation : 'B'
+    }
+]
 
-NOZZLE_TIPS = [ 'N045', 'N08', 'N14', 'N24', 'N48', 'N75' ]
+NOZZLE_TIPS =
+[
+    'N045',
+    'N08',
+    'N14',
+    'N24',
+    'N48',
+    'N75'
+]
 
 def find_or_create_camera(metadata):
     cam = find_camera_by_name(metadata['name'])
@@ -647,8 +773,8 @@ def find_or_create_camera(metadata):
     cam.setSettleTimeoutMs(metadata['settleTimeout'])
     cam.setPreviewFps(metadata['previewFPS'])
     if metadata['dir'] == Camera.Looking.Down:
-        cam.setAxisX(find_axis_by_name('x'))
-        cam.setAxisY(find_axis_by_name('y'))
+        cam.setAxisX(find_axis_by_name(Axis.Type.X.getDefaultLetter()))
+        cam.setAxisY(find_axis_by_name(Axis.Type.Y.getDefaultLetter()))
         cam.setAxisZ(find_axis_by_name('Camera Z'))
         cam.setAxisRotation(find_axis_by_name('Camera Rotation'))
         cam.setLightActuator(find_actuator_by_name(metadata['lightActuator'], machine.getDefaultHead()))
@@ -771,7 +897,6 @@ def find_gcode_driver(driver_name):
     return None
 
 def remove_all_gcode_drivers():
-    config = Configuration.get()
     driversToRemove = []
     for driver in machine.getDrivers():
         driversToRemove.append(driver)
@@ -781,10 +906,8 @@ def remove_all_gcode_drivers():
             machine.removeDriver(driver)
         except:
             pass
-    config.save()
 
 def remove_all_cameras():
-    config = Configuration.get()
     camerasToRemove = []
     for cam in machine.getCameras():
         camerasToRemove.append(cam)
@@ -795,10 +918,8 @@ def remove_all_cameras():
             gui.getCameraViews().removeCamera(cam)
         except:
             pass
-    config.save()
 
 def remove_all_actuators():
-    config = Configuration.get()
     actuatorsToRemove = []
     for act in machine.getActuators():
         actuatorsToRemove.append(act)
@@ -808,10 +929,8 @@ def remove_all_actuators():
             machine.removeActuator(act)
         except:
             pass
-    config.save()
 
 def remove_all_axes():
-    config = Configuration.get()
     axesToRemove = []
     for axis in machine.getAxes():
         axesToRemove.append(axis)
@@ -821,10 +940,8 @@ def remove_all_axes():
             machine.removeAxis(axis)
         except:
             pass
-    config.save()
 
 def remove_all_nozzle_tips():
-    config = Configuration.get()
     nozzleTipsToRemove = []
     for ent in machine.getNozzleTips():
         nozzleTipsToRemove.append(ent)
@@ -834,7 +951,6 @@ def remove_all_nozzle_tips():
             machine.removeNozzleTip(tip)
         except:
             pass
-    config.save()
 
 def remove_head_mounted_nozzles():
     nozzlesToRemove = []
@@ -848,7 +964,6 @@ def remove_head_mounted_nozzles():
             pass
 
 def remove_head_mounted_cameras():
-    config = Configuration.get()
     camerasToRemove = []
     for cam in machine.getDefaultHead().getCameras():
         camerasToRemove.append(cam)
@@ -859,10 +974,8 @@ def remove_head_mounted_cameras():
             machine.getDefaultHead().removeCamera(cam)
         except:
             pass
-    config.save()
 
 def remove_head_mounted_actuators():
-    config = Configuration.get()
     actuatorsToRemove = []
     for act in machine.getDefaultHead().getActuators():
         actuatorsToRemove.append(act)
@@ -872,10 +985,8 @@ def remove_head_mounted_actuators():
             machine.getDefaultHead().removeActuator(act)
         except:
             pass
-    config.save()
 
 def remove_all_feeders():
-    config = Configuration.get()
     feedersToRemove = []
     for feeder in machine.getFeeders():
         feedersToRemove.append(feeder)
@@ -885,111 +996,6 @@ def remove_all_feeders():
             machine.removeFeeder(feeder)
         except:
             pass
-    config.save()
-
-def create_new_gcode_drivers():
-    config = Configuration.get()
-    for driver in GCODE_DRIVERS:
-        find_or_create_gcode_driver(driver['name'])
-    config.save()
-
-def configure_gcode_drivers():
-    config = Configuration.get()
-    for ent in GCODE_DRIVERS:
-        driver = find_gcode_driver(ent['name'])
-        for gcode in ent['gcode']:
-            gcodeValue = ''
-            if isinstance(gcode['value'], list):
-                gcodeValue = '\n'.join(gcode['value'])
-            else:
-                gcodeValue = gcode['value']
-            driver.setCommand(None, gcode['type'], gcodeValue)
-    for ent in ACTUATORS:
-        if ent.has_key('gcode'):
-            if ent['headMounted']:
-                actuator = find_actuator_by_name(ent['name'], machine.getDefaultHead())
-            else:
-                actuator = find_actuator_by_name(ent['name'])
-            driver = find_gcode_driver(ent['gcodeDriver'])
-            for gcode in ent['gcode']:
-                gcodeValue = ''
-                if isinstance(gcode['value'], list):
-                    gcodeValue = '\n'.join(gcode['value'])
-                else:
-                    gcodeValue = gcode['value']
-                driver.setCommand(actuator, gcode['type'], gcodeValue)
-    config.save()
-
-def create_new_axes():
-    config = Configuration.get()
-    for axis in AXES:
-        find_or_create_axis(axis)
-    config.save()
-
-def create_new_cameras():
-    config = Configuration.get()
-    for camera in CAMERAS:
-        find_or_create_camera(camera)
-    config.save()
-
-def create_new_actuators():
-    config = Configuration.get()
-    for ent in ACTUATORS:
-        if ent['headMounted']:
-            act = find_actuator_by_name(ent['name'], machine.getDefaultHead())
-            if act is None:
-                act = ReferenceActuator()
-                machine.getDefaultHead().addActuator(act)
-        else:
-            act = find_actuator_by_name(ent['name'])
-            if act is None:
-                act = ReferenceActuator()
-                machine.addActuator(act)
-        act.setName(ent['name'])
-        act.setValueType(ent['type'])
-        if ent['type'] != Actuator.ActuatorValueType.Profile:
-            act.setDriver(find_gcode_driver(ent['gcodeDriver']))
-        else:
-            profiles = act.getActuatorProfiles()
-            profiles.setActuator1(find_actuator_by_name(ent['actuators'][0]))
-            profiles.setActuator2(find_actuator_by_name(ent['actuators'][1]))
-            for profileConfig in ent['profiles']:
-                prof = ReferenceActuatorProfiles.Profile()
-                prof.setName(profileConfig['name'])
-                if profileConfig['default']:
-                    prof.setDefaultOn(True)
-                    prof.setDefaultOff(False)
-                    prof.setValue1(True)
-                    prof.setValue2(True)
-                else:
-                    prof.setDefaultOn(False)
-                    prof.setDefaultOff(True)
-                profiles.add(prof)
-        act.setDisabledActuation(ent['disabled'])
-        act.setEnabledActuation(ent['enabled'])
-        act.setHomedActuation(ent['homed'])
-    config.save()
-
-def create_new_nozzles():
-    config = Configuration.get()
-    machineHead = machine.getDefaultHead()
-    for ent in NOZZLES:
-        nozzle = find_or_create_nozzle(ent['name'], machineHead)
-        for tip in NOZZLE_TIPS:
-            nozzle.addCompatibleNozzleTip(find_or_create_nozzle_tip(tip))
-        nozzle.setVacuumActuator(find_actuator_by_name(ent['vacuumActuator'], machineHead))
-        nozzle.setVacuumSenseActuator(find_actuator_by_name(ent['vacuumSenseActuator'], machineHead))
-        nozzle.setAxisX(find_axis_by_name(ent['x']))
-        nozzle.setAxisY(find_axis_by_name(ent['y']))
-        nozzle.setAxisZ(find_axis_by_name(ent['z']))
-        nozzle.setAxisRotation(find_axis_by_name(ent['rotation']))
-    config.save()
-
-def create_nozzle_tips():
-    config = Configuration.get()
-    for tip in NOZZLE_TIPS:
-        find_or_create_nozzle_tip(tip)
-    config.save()
 
 print('Removing existing configuration settings')
 
@@ -1000,21 +1006,109 @@ remove_all_nozzle_tips()
 remove_head_mounted_cameras()
 remove_head_mounted_actuators()
 remove_all_gcode_drivers()
+remove_head_mounted_nozzles()
 if CLEANUP_EXISTING_FEEDERS:
     remove_all_feeders()
 
-# removing nozzles will not save config and must be last entry
-remove_head_mounted_nozzles()
-
 print('Creating new configuration settings')
-create_new_gcode_drivers()
-create_nozzle_tips()
-create_new_actuators()
-create_new_axes()
-create_new_cameras()
-create_new_nozzles()
-configure_gcode_drivers()
+# Create gcode driver(s)
+for driver in GCODE_DRIVERS:
+    find_or_create_gcode_driver(driver['name'])
 
+# Create nozzle tips
+for tip in NOZZLE_TIPS:
+    find_or_create_nozzle_tip(tip)
+
+# Create actuators
+for ent in ACTUATORS:
+    if ent['headMounted']:
+        act = find_actuator_by_name(ent['name'], machine.getDefaultHead())
+        if act is None:
+            act = ReferenceActuator()
+            machine.getDefaultHead().addActuator(act)
+    else:
+        act = find_actuator_by_name(ent['name'])
+        if act is None:
+            act = ReferenceActuator()
+            machine.addActuator(act)
+    act.setName(ent['name'])
+    act.setValueType(ent['type'])
+    if ent['type'] != Actuator.ActuatorValueType.Profile:
+        act.setDriver(find_gcode_driver(ent['gcodeDriver']))
+        act.setValue1(ent['value'][0])
+        act.setValue2(ent['value'][1])
+    else:
+        profiles = act.getActuatorProfiles()
+        profiles.setActuator1(find_actuator_by_name(ent['actuators'][0]))
+        profiles.setActuator2(find_actuator_by_name(ent['actuators'][1]))
+        for profileConfig in ent['profiles']:
+            prof = ReferenceActuatorProfiles.Profile()
+            prof.setName(profileConfig['name'])
+            if profileConfig['default']:
+                prof.setDefaultOn(True)
+                prof.setDefaultOff(False)
+                prof.setValue1(True)
+                prof.setValue2(True)
+            else:
+                prof.setDefaultOn(False)
+                prof.setDefaultOff(True)
+            profiles.add(prof)
+    act.setDisabledActuation(ent['disabled'])
+    act.setEnabledActuation(ent['enabled'])
+    act.setHomedActuation(ent['homed'])
+
+# Create axis
+for axis in AXES:
+    find_or_create_axis(axis)
+
+# Create cameras
+for camera in CAMERAS:
+    find_or_create_camera(camera)
+
+# Create nozzles
+machineHead = machine.getDefaultHead()
+for ent in NOZZLES:
+    nozzle = find_or_create_nozzle(ent['name'], machineHead)
+    for tip in NOZZLE_TIPS:
+        nozzle.addCompatibleNozzleTip(find_or_create_nozzle_tip(tip))
+    nozzle.setVacuumActuator(find_actuator_by_name(ent['vacuumActuator'], machineHead))
+    nozzle.setVacuumSenseActuator(find_actuator_by_name(ent['vacuumSenseActuator'], machineHead))
+    nozzle.setAxisX(find_axis_by_name(ent[Axis.Type.X]))
+    nozzle.setAxisY(find_axis_by_name(ent[Axis.Type.Y]))
+    nozzle.setAxisZ(find_axis_by_name(ent[Axis.Type.Z]))
+    nozzle.setAxisRotation(find_axis_by_name(ent[Axis.Type.Rotation]))
+
+# Configure gcode driver(s)
+for ent in GCODE_DRIVERS:
+    driver = find_gcode_driver(ent['name'])
+    for gcode in ent['gcode']:
+        gcodeValue = ''
+        if isinstance(gcode['value'], list):
+            gcodeValue = '\n'.join(gcode['value'])
+        else:
+            gcodeValue = gcode['value']
+        driver.setCommand(None, gcode['type'], gcodeValue)
+
+# Configure actuators
+for ent in ACTUATORS:
+    if ent.has_key('gcode'):
+        if ent['headMounted']:
+            actuator = find_actuator_by_name(ent['name'], machine.getDefaultHead())
+        else:
+            actuator = find_actuator_by_name(ent['name'])
+        driver = find_gcode_driver(ent['gcodeDriver'])
+        for gcode in ent['gcode']:
+            gcodeValue = ''
+            if isinstance(gcode['value'], list):
+                gcodeValue = '\n'.join(gcode['value'])
+            else:
+                gcodeValue = gcode['value']
+            driver.setCommand(actuator, gcode['type'], gcodeValue)
+
+# Save the configuration after all updates have been made
+Configuration.get().save()
+
+# Try and clear out some of the issues & solutions tab entries
 solutions = machine.getSolutions()
 limit = 10
 while solutions.getIssues().size() == 0 and limit > 0:
@@ -1064,3 +1158,5 @@ while keepGoing and solutions.getIssues().size() > 0:
                         if text in choice.getDescription():
                             issue.setChoice(choice.getValue())
                             issue.setState(Solutions.State.Solved)
+
+print('Configuration complete, please proceed to Issues & Solutions')
